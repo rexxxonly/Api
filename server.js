@@ -1,7 +1,7 @@
 
 const express = require("express");
 const axios = require("axios");
-const { createCanvas, loadImage } = require("canvas");
+const { createCanvas, loadImage, registerFont } = require("canvas");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -14,10 +14,10 @@ function getSmartURL(avatarObj) {
   return avatarObj.choto || avatarObj.bro || avatarObj.medium || defaultAvatar;
 }
 
-async function drawCircleImage(ctx, img, x, y, size, glow = false) {
+async function drawCircleImage(ctx, img, x, y, size, glow = false, glowColor = "cyan") {
   if (glow) {
     ctx.save();
-    ctx.shadowColor = "cyan";
+    ctx.shadowColor = glowColor;
     ctx.shadowBlur = 20;
   }
 
@@ -41,51 +41,65 @@ app.post("/gcimg", async (req, res) => {
       bgcolor = "#000",
       color = "#fff",
       admincolor = "yellow",
-      membercolor = "skyblue",
+      membercolor = "red",
+      groupborderColor = "lime",
       glow = true
     } = req.body;
 
     const canvas = createCanvas(1800, 1200);
     const ctx = canvas.getContext("2d");
 
-    // Background Image
-    const bg = await loadImage("background.jpg");
-    ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+    // Background image or fill
+    try {
+      const bg = await loadImage("background.jpg");
+      ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+    } catch {
+      ctx.fillStyle = bgcolor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
-    // Group name
-    ctx.fillStyle = color;
-    ctx.font = "bold 60px Arial";
+    // Group name with shadow
+    ctx.save();
+    ctx.font = "bold 70px Arial";
     ctx.textAlign = "center";
-    ctx.fillText(groupName || "Group", canvas.width / 2, 80);
+    ctx.shadowColor = "#000";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = color;
+    ctx.fillText(groupName || "Group", canvas.width / 2, 90);
+    ctx.restore();
 
-    // Group photo
+    // Group photo in circle
     if (groupPhotoURL) {
-      const g = await loadImage(groupPhotoURL);
-      ctx.drawImage(g, canvas.width / 2 - 100, 100, 200, 200);
+      try {
+        const groupImg = await loadImage(groupPhotoURL);
+        await drawCircleImage(ctx, groupImg, canvas.width / 2 - 100, 110, 200, true, "lime");
+      } catch (e) {
+        console.log("Group img failed", e.message);
+      }
     }
 
     // Admin label
     ctx.fillStyle = admincolor;
     ctx.font = "bold 36px Arial";
-    ctx.fillText("ðŸŸ¡ Admin", canvas.width / 2, 350);
+    ctx.fillText("ðŸŸ¡ Admin", canvas.width / 2, 360);
 
     // Admin avatars
-    let ax = 150, ay = 390, aSize = 100;
+    let ax = 150, ay = 400, aSize = 100;
     for (let i = 0; i < adminURLs.length; i++) {
       try {
         const img = await loadImage(getSmartURL(adminURLs[i]));
-        await drawCircleImage(ctx, img, ax, ay, aSize, glow);
+        await drawCircleImage(ctx, img, ax, ay, aSize, glow, "yellow");
         ax += aSize + 30;
         if (ax + aSize > canvas.width) {
           ax = 150;
           ay += aSize + 30;
         }
       } catch (e) {
-        console.log("Admin img load fail:", e.message);
+        console.log("Admin avatar fail:", e.message);
       }
     }
 
-    // Member label
+    // Members label in red
     ctx.fillStyle = membercolor;
     ctx.font = "bold 36px Arial";
     ctx.fillText("ðŸ”µ Members", canvas.width / 2, ay + aSize + 50);
@@ -95,26 +109,26 @@ app.post("/gcimg", async (req, res) => {
     for (let i = 0; i < memberURLs.length; i++) {
       try {
         const img = await loadImage(getSmartURL(memberURLs[i]));
-        await drawCircleImage(ctx, img, mx, my, mSize, glow);
+        await drawCircleImage(ctx, img, mx, my, mSize, glow, "skyblue");
         mx += mSize + 25;
         if (mx + mSize > canvas.width) {
           mx = 150;
           my += mSize + 30;
         }
       } catch (e) {
-        console.log("Member img load fail:", e.message);
+        console.log("Member avatar fail:", e.message);
       }
     }
 
-    // Output image
+    // Output PNG
     const stream = canvas.createPNGStream();
     res.setHeader("Content-Type", "image/png");
     stream.pipe(res);
 
   } catch (err) {
-    console.error("âŒ API Error:", err);
+    console.error("âŒ Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`âœ… gcimg API running on port ${PORT}`));
+app.listen(PORT, () => console.log(`ðŸŽ¨ gcimg beautified API running on port ${PORT}`));
